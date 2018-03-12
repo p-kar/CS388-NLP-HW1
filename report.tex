@@ -1,0 +1,83 @@
+\documentclass[a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{hyperref}
+\usepackage[justification=centering]{caption}
+\usepackage[margin=1.31in]{geometry}
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{HW1: N-gram Language Models}
+
+\author{Pratyush Kar (UT EID: pk8498)}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Language models are probabilistic models that assign a probability to a sentence of being part of that language. N-grams are a kind of language models that give probability $P(w_n | w_1^{n-1})$ for a word $w_n$ given the context $w_1 ... w_{n-1}$. Traditionally, n-gram models are computed in the forward direction i.e. the left $n - 1$ words are used to assign the probability of $w_n$. In this experiment we compare forward bigram models to backward and bidirectional bigram models on 3 different datasets (of varying complexities)-- Atis, WSJ and Brown.
+\end{abstract}
+
+\section{Implementation}
+\label{sec:implemetation}
+
+Based on the given \code{BigramModel [BG]} class we can implement the \code{BackwardBigramModel [BBG]} class with just a few minor modifications to the code. Each sentence that is part of the dataset is reversed (word by word) and passed to the backward bigram model for both training and testing purposes. So now the backward bigram model assigns probability $P(w_n | w_{n + 1})$ to the word $w_n$ based on the word that comes after it in the sentence ($w_{n + 1}$). We interchange the \code{<S>} with \code{</S>} tokens and vice-versa because the backward model generates the probability of the sentence right-to-left. So, the model starts with the token \code{</S>} and keeps generating words ($w_n$) till it generates the token \code{<S>} which marks the beginning of the sentence. We use the same policy of assigning the first occurrence of a token with \code{<UNK>} to handle out-of-vocabulary (OOV) words and the same linear interpolation method as the forward bigram model.
+
+For the \code{BidirectionalBigramModel [BDBG]} we create a class with a \code{private} instance of both \code{BigramModel} and \code{BackwardBigramModel}. During the train process both these models are trained independently. Both classes \code{BG} and \code{BBG} have a function called \code{sentenceTokenProbs} which returns a log probability of each word in the sentence along with \code{<S>} or \code{</S>} as a \code{double} array. We linearly interpolate these values based on parameters $\lambda_1$ and $\lambda_2$, where $\lambda_1 + \lambda_2 = 1$, to generate the final probability of the word $w_n$ based on equation \ref{eq1}. The tokens \code{<S>} and \code{</S>} are skipped for this computation. We use a value of 0.5 for both $\lambda_1$ and $\lambda_2$, which basically means that equal weights are given to both \code{BG} and \code{BBG} for probability calculation.
+
+\begin{equation}
+\label{eq1}
+P_{\code{BDBG}}(w_n | w_{n-1}, w_{n+1}) = \lambda_1 * P_{\code{BG}}(w_n | w_{n-1}) + \lambda_2 * P_{\code{BBG}}(w_n | w_{n+1})
+\end{equation}
+
+\section{Evaluation Metrics and Dataset}
+\label{metrics}
+
+Perplexity is a measure of the probability that the models assigns to the corpus normalised for the number of words in the corpus. It is important to note that \code{BG} and \code{BBG} have differing definition for perplexity, one considers \code{<S>} token while the other considers \code{</S>} token while computing perplexity. For this reason perplexity cannot be used to compare the models directly. To account for this a new measure is introduced called word perplexity which is the same as perplexity but ignores the \code{<S>} and \code{</S>} tokens.
+
+Each of the 3 models \code{BG}, \code{BBG} and \code{BDBG} are run on three different datasets -- Atis, WSJ and Brown. For all three cases the dataset is split into a training set and a test set based on a user-defined parameter $split_{frac}$ which denotes the percentage of data to be considered for testing. For our implementation we set 0.1 as the value for $split_{frac}$.
+
+\section{Results}
+\label{results}
+
+\subsection{Forward vs. Backward Bigram Model}
+
+English is considered to be a strongly head-initial language\footnote{\url{https://en.wikipedia.org/wiki/Head-directionality_parameter}.} which means that in each syntactic phrase the head of the phrase precedes its complements. Given this result, our initial hypothesis was that \code{BBG} model would perform better than \code{BG} model since, it is easier to predict the head of the phrase if we are given its complements. The word perplexity results (given in Table \ref{table-results}) for WSJ and Brown datasets agree with this hypothesis. But, the same measure for the Atis dataset show that \code{BG} performs slightly better than the \code{BBG} model.
+
+\vspace{\baselineskip}
+\begin{minipage}{39em}
+An example from Atis dataset:\\
+\code{[ The return flight ] should leave at around seven.}\\\\
+An example from WSJ dataset:\\
+\code{[ Commonwealth Edison ] now faces [ an additional court-ordered refund ] on [ its summer/winter rate differential collections ] that [ the Illinois Appellate Court ] has estimated at [ 140 million ].}
+\end{minipage}
+\vspace{\baselineskip}
+
+Penn Treebank dataset consists of both POS tagged and syntactically bracketed versions of the text\footnote{Taylor, A., Marcus, M., \& Santorini, B. (2003). The Penn Treebank: An Overview.}. If we look closely at the sentence structure of Atis dataset and compare that to the sentence structure of the WSJ or Brown dataset we can easily see that the syntactic phrase structure of WSJ (or Brown) is more complex than Atis. For example, predicting \code{<Illinois>} after \code{<the>} is much harder for \code{BG} than predicting \code{<the>} given \code{<Illinois>} for \code{BBG}. Hence, we can utilise the richer syntactic structure in WSJ (or Brown) while training the \code{BBG} model but, not in the case of Atis. This explains the observed discrepancy in the results.
+
+\subsection{Forward \& Backward vs. Bidirectional Bigram Model}
+
+Based on the results (in Table \ref{table-results}) it is evident that the \code{BDBG} model performs significantly better than both \code{BG} and \code{BBG}. This was expected because the \code{BDBG} models a ``sort-of" \emph{trigram} model without the inherent drawbacks of a trigram model. Trigram models generally suffer from extremely sparse data and need lots of data to be useful. By combining both \code{BG} and \code{BBG} models we are able to utilise the context on both the sides of the word ($w_n$) and hence, get a better word perplexity value across the board.
+
+\begin{table}[h]
+% \scriptsize
+\centering
+\caption{Perplexity and word perplexity results for \code{BigramModel [BG]}, \code{BackwardBigramModel [BBG]} and \code{BidirectionalBigramModel [BDBG]}}
+\label{table-results}
+\begin{tabular}{c|c|cc|ccc}
+\multicolumn{2}{c|}{\multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Dataset\\ $split_{frac}$ = 0.1\end{tabular}}} & \multicolumn{2}{c|}{Perplexity} & \multicolumn{3}{c}{Word Perplexity}               \\
+\multicolumn{2}{c|}{}                                                                                        & $\code{BG}$    & $\code{BBG}$   & $\code{BG}$ & $\code{BBG}$ & $\code{BDBG}$        \\ \hline
+\multirow{2}{*}{\textbf{Atis}}                                     & train                                   & 9.043e+00      & 9.013e+00      & 1.059e+01   & 1.164e+01    & $\textbf{7.235e+00}$ \\
+                                                                   & test                                    & 1.934e+01      & 1.936e+01      & 2.405e+01   & 2.716e+01    & $\textbf{1.270e+01}$ \\ \hline
+\multirow{2}{*}{\textbf{WSJ}}                                      & train                                   & 7.427e+01      & 7.427e+01      & 8.889e+01   & 8.666e+01    & $\textbf{4.651e+01}$ \\
+                                                                   & test                                    & 2.197e+02      & 2.195e+02      & 2.751e+02   & 2.664e+02    & $\textbf{1.261e+02}$ \\ \hline
+\multirow{2}{*}{\textbf{Brown}}                                    & train                                   & 9.352e+01      & 9.351e+01      & 1.134e+02   & 1.108e+02    & $\textbf{6.147e+01}$ \\
+                                                                   & test                                    & 2.313e+02      & 2.312e+02      & 3.107e+02   & 2.997e+02    & $\textbf{1.675e+02}$
+\end{tabular}
+\end{table}
+
+\end{document}
